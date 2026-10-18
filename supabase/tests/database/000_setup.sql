@@ -185,10 +185,13 @@ begin
   perform tests.add_conversation('conv_s1', 'sandbox_1', 's1_user', null);
   perform tests.add_conversation('conv_s2', 'sandbox_2', 's2_user', 'handoff_s2');
 
-  -- A stored file in every company's folder of the private bucket.
+  -- A stored file in every fixture company's folder of the private bucket (the local database may also
+  -- hold the seeded demo company, whose files already exist).
   insert into storage.objects (bucket_id, name, owner_id)
   select 'documents', d.storage_path, null
-  from public.documents d;
+  from public.documents d
+  where d.company_id in (tests.id('company_a'), tests.id('company_b'), tests.id('template'),
+                         tests.id('sandbox_1'), tests.id('sandbox_2'));
 end;
 $$;
 
