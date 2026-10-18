@@ -1,0 +1,52 @@
+# Internal notes (kept out of the public repository)
+/CLAUDE.md
+/docs/BRIEF.md
+/docs/PLAN.md
+/docs/SCHEMA.md
+/docs/DEVLOG.md
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# Testing
+/coverage
+/test-results/
+/playwright-report/
+
+# Eval runs: raw transcripts stay local; the summary table goes into the README
+/evals/runs/
+
+# Next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Supabase local state
+supabase/.branches
+supabase/.temp
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Throwaway local scripts
+*.tmp.*

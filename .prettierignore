@@ -1,0 +1,17 @@
+# Internal notes (not part of the public repository)
+/CLAUDE.md
+/docs/
+
+# Demo content is written by hand; keep its formatting as authored
+/demo/
+
+# Generated and vendored
+.next/
+node_modules/
+package-lock.json
+next-env.d.ts
+supabase/.temp/
+coverage/
+/evals/runs/
+playwright-report/
+test-results/

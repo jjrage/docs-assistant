@@ -1,0 +1,51 @@
+{
+  "name": "Ostervale Property Management",
+  "slug": "ostervale-property-management",
+  "community": "Larkfen Commons",
+  "city": "Lexington",
+  "state": "KY",
+  "timezone": "America/New_York",
+  "address": "250 Corvane Street, Suite 400, Lexington, KY 40507",
+  "phone": "(859) 555-0142",
+  "email": "office@ostervale.example",
+  "website": "www.ostervale.example",
+  "emergency_line": "(859) 555-0199",
+  "name_checks": [
+    {
+      "query": "\"Ostervale Property Management\"",
+      "result": "No matching company found. Only unrelated, differently spelled names came up (Overdale Property Management Ltd in the UK, Osto Property Management in Florida, Ostrow Property Management)."
+    },
+    {
+      "query": "\"Ostervale\" apartments",
+      "result": "No matching apartment community or brand found. Results were travel listings for other places (Ostercappeln, Osterberg, Orrvale, Osten)."
+    },
+    {
+      "query": "\"Ostervale\"",
+      "result": "No company, community or brand with this exact name. Only similar place names (Osterville MA village, Ostervala Sweden, Ostrovacice Czech Republic)."
+    },
+    {
+      "query": "\"Ostervale Residential\"",
+      "result": "No matching company found. Only similar place names (Osterley UK, Osterville MA) and a UK residents company with a different name."
+    },
+    {
+      "query": "Ostervale property management company Kentucky",
+      "result": "No Kentucky company with this name. Results were other Kentucky property managers with unrelated names."
+    },
+    {
+      "query": "\"Thornquill\" property management",
+      "result": "Earlier candidate, not used. No exact match, but several 'Thornhill' management companies came up, so it was dropped as too close."
+    },
+    {
+      "query": "\"Sedgecrest Commons\"",
+      "result": "Candidate community name, not used: a senior care facility called 'Sedgewood Commons' (Maine) is too close."
+    },
+    {
+      "query": "\"Larkfen Commons\"",
+      "result": "No matching community found. Only unrelated names (Larkfield in Kent UK, Larken Associates developments with other names)."
+    },
+    {
+      "query": "\"Larkfen\" apartments",
+      "result": "No matching apartment community found. Results were other names (Lark on Woodmen, Bevelo Larkspur, Larken Associates)."
+    }
+  ]
+}
