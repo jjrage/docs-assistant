@@ -62,6 +62,8 @@ export type TurnResult = {
   outcome: TurnOutcome;
   handoffId: string | null;
   model: string;
+  /** Why the last model response stopped (max_tokens means the answer was cut off). */
+  stopReason: string | null;
   usage: TokenUsage;
   costMicroUsd: number;
   firstTokenMs: number | null;
@@ -95,6 +97,7 @@ export async function answerQuestion(
   let refused = false;
   let firstTokenMs: number | null = null;
   let model = config.model;
+  let stopReason: string | null = null;
 
   emit({ type: "status", text: "Searching the documents…" });
   const initial = await deps.search(question, config.initialResults);
@@ -158,6 +161,7 @@ export async function answerQuestion(
 
     const message = await stream.finalMessage();
     model = message.model;
+    stopReason = message.stop_reason;
     usage.input += message.usage.input_tokens;
     usage.output += message.usage.output_tokens;
     usage.cacheRead += message.usage.cache_read_input_tokens ?? 0;
@@ -262,6 +266,7 @@ export async function answerQuestion(
     outcome,
     handoffId,
     model,
+    stopReason,
     usage,
     costMicroUsd: costMicroUsd(model, usage),
     firstTokenMs,

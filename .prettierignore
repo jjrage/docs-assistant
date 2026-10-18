@@ -16,3 +16,4 @@ coverage/
 playwright-report/
 test-results/
 /src/server/documents/__fixtures__/
+/evals/QUESTIONS.md
