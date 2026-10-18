@@ -28,11 +28,12 @@ Clause 2.3 explains how late charges work for every resident. Sentence 1 of clau
 
 ### Late charge amounts
 
-| Situation               | Charge      |
-| ----------------------- | ----------- |
-| Rent paid after the 5th | $75         |
-| Returned payment        | $40         |
-| Each further day        | $10 per day |
+| Situation | Charge | Notes |
+| --- | --- | --- |
+| Rent paid after the 5th | $75 | Added on the 6th |
+| Returned payment | $40 | Per payment |
+| Each further day | $10 per day | Up to $150 a month |
+| Payment plan setup | $25 | Charged once when a written payment plan is signed with the office and approved by the community manager before the 10th of the month |
 
 ## 3. Security Deposit
 

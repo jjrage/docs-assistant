@@ -15,3 +15,4 @@ coverage/
 /evals/runs/
 playwright-report/
 test-results/
+/src/server/documents/__fixtures__/

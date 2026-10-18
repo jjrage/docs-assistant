@@ -57,9 +57,16 @@ describe("PDF parsing", () => {
   it("reads table rows as cells", () => {
     expect(find(blocks, "Rent paid after the 5th")).toMatchObject({
       kind: "table_row",
-      text: "Rent paid after the 5th | $75",
+      text: "Rent paid after the 5th | $75 | Added on the 6th",
     });
-    expect(find(blocks, "Situation").text).toBe("Situation | Charge");
+    expect(find(blocks, "Situation").text).toBe("Situation | Charge | Notes");
+  });
+
+  it("keeps a table cell that wraps over several lines in its row", () => {
+    expect(find(blocks, "Payment plan setup")).toMatchObject({
+      kind: "table_row",
+      text: "Payment plan setup | $25 | Charged once when a written payment plan is signed with the office and approved by the community manager before the 10th of the month",
+    });
   });
 
   it("reads bulleted and numbered list items one by one", () => {

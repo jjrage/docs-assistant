@@ -66,7 +66,7 @@ describe("processing an uploaded document", () => {
     const top = hits![0]!;
     expect(top).toMatchObject({ title: "Resident Handbook", page: 2, format: "pdf" });
     expect(top.section).toBe("2. Late Charges › Late charge amounts");
-    expect(JSON.stringify(top.blocks)).toContain("Returned payment | $40");
+    expect(JSON.stringify(top.blocks)).toContain("Returned payment | $40 | Per payment");
     // Both signals found it; fusion put it first.
     expect(top.vector_rank).not.toBeNull();
     expect(top.text_rank).not.toBeNull();

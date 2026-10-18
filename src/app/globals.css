@@ -36,3 +36,12 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* A cited passage in the PDF viewer: the text layer is transparent, only the highlight shows. */
+.textLayer mark {
+  background: rgb(250 204 21 / 0.45);
+  color: transparent;
+  border-radius: 2px;
+  padding: 0;
+  margin: 0;
+}

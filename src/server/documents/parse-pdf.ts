@@ -5,7 +5,8 @@ import { finishBlocks, normalizeSpace, type ParsedDocument, type RawBlock } from
 /**
  * PDF → blocks. The text layer has no paragraphs or headings, only positioned runs of text, so the layout is
  * rebuilt from geometry:
- *  - runs on the same baseline form a line; a wide gap inside a line separates table cells;
+ *  - runs on the same baseline form a line; a gap wider than a space separates table cells, and text that
+ *    wraps inside a cell (closer than a row, lined up with the columns) stays in its row;
  *  - the most common font size is body text; lines clearly larger are headings, ranked by size into levels;
  *  - a vertical gap larger than normal line spacing, a change of indent or of font size starts a new block;
  *  - indented lines are list items; lines that repeat at the top or bottom of most pages (running headers,
@@ -19,6 +20,8 @@ type Line = {
   fontSize: number;
   text: string;
   cells: string[];
+  /** Left edge of each cell, to line wrapped cell text up with its column. */
+  cellXs: number[];
 };
 
 const round = (n: number) => Math.round(n * 2) / 2;
@@ -36,28 +39,34 @@ function linesOfPage(items: StructuredTextItem[], page: number): Line[] {
   return rows
     .map((row) => {
       row.sort((a, b) => a.x - b.x);
-      const cells: string[] = [""];
+      const cells: { x: number | null; text: string }[] = [{ x: null, text: "" }];
       let lastEnd: number | null = null;
       let fontSize = 0;
       for (const item of row) {
         const blank = item.str.trim() === "";
+        const wideBlank = blank && item.width > item.fontSize * 0.8;
         // A wide whitespace run, or a wide gap between runs, separates table cells.
         const gap = lastEnd === null ? 0 : item.x - lastEnd;
-        if ((blank && item.width > item.fontSize * 2) || gap > item.fontSize * 2) {
-          cells.push("");
+        if (wideBlank || gap > item.fontSize * 0.8) cells.push({ x: null, text: "" });
+        const cell = cells.at(-1)!;
+        if (!blank) {
+          fontSize = Math.max(fontSize, item.fontSize);
+          cell.x ??= item.x;
         }
-        if (!blank) fontSize = Math.max(fontSize, item.fontSize);
-        cells[cells.length - 1] += blank && item.width > item.fontSize * 2 ? "" : item.str;
+        if (!wideBlank) cell.text += item.str;
         lastEnd = item.x + item.width;
       }
-      const clean = cells.map(normalizeSpace).filter(Boolean);
+      const clean = cells
+        .map((c) => ({ x: c.x ?? 0, text: normalizeSpace(c.text) }))
+        .filter((c) => c.text.length > 0);
       return {
         page,
         y: row[0]!.y,
         x: Math.min(...row.filter((it) => it.str.trim()).map((it) => it.x)),
         fontSize: round(fontSize),
-        text: clean.join(" "),
-        cells: clean,
+        text: clean.map((c) => c.text).join(" "),
+        cells: clean.map((c) => c.text),
+        cellXs: clean.map((c) => c.x),
       };
     })
     .filter((line) => line.text.length > 0);
@@ -112,7 +121,25 @@ export async function parsePdf(data: Uint8Array): Promise<ParsedDocument> {
   // Every line either continues the open block (the last one) or opens a new one.
   const raw: RawBlock[] = [];
   let previous: Line | null = null;
+  // The open table row's columns: text that wraps inside a cell continues the row, not a new one.
+  let row: { xs: number[]; cells: string[] } | null = null;
   for (const line of lines) {
+    const column = (x: number) => row?.xs.findIndex((c) => Math.abs(c - x) < 3) ?? -1;
+    if (
+      row &&
+      previous?.page === line.page &&
+      previous.y - line.y <= line.fontSize * 1.6 &&
+      line.cellXs.every((x) => column(x) >= 0)
+    ) {
+      line.cells.forEach((cell, i) => {
+        const at = column(line.cellXs[i]!);
+        row!.cells[at] = `${row!.cells[at]} ${cell}`;
+      });
+      raw.at(-1)!.text = row.cells.join(" | ");
+      previous = line;
+      continue;
+    }
+
     const heading = isHeading(line);
     const tableRow = !heading && line.cells.length >= 2;
     const marker = /^(\d{1,2}[.)]|[a-z][.)]|[•◦▪●\-–*])\s/.test(line.text);
@@ -140,7 +167,9 @@ export async function parsePdf(data: Uint8Array): Promise<ParsedDocument> {
       previous.y - line.y <= line.fontSize * 1.6 &&
       // A list item starts at its marker; its wrapped lines line up with the first.
       !(kind === "list_item" && marker) &&
-      Math.abs(previous.x - line.x) <= bodySize * 0.8;
+      (Math.abs(previous.x - line.x) <= bodySize * 0.8 ||
+        // Wrapped lines of a numbered item line up with its text, right of the number.
+        (kind === "list_item" && line.x > previous.x && line.x - previous.x <= bodySize * 1.5));
 
     if (continues) {
       // Join a word hyphenated across lines; otherwise lines meet with a space.
@@ -156,6 +185,7 @@ export async function parsePdf(data: Uint8Array): Promise<ParsedDocument> {
         text: tableRow ? line.cells.join(" | ") : line.text,
       });
     }
+    row = tableRow ? { xs: [...line.cellXs], cells: [...line.cells] } : null;
     previous = line;
   }
 

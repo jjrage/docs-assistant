@@ -14,10 +14,11 @@ export const metadata: Metadata = { robots: { index: false } };
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
-    <div className="flex min-h-full flex-1 flex-col">
+    // Full-height frame: pages scroll inside <main>, so the chat can keep its input at the bottom.
+    <div className="flex h-dvh flex-col">
       <DemoBanner />
-      <div className="flex flex-1">
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-200 bg-white lg:flex">
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-64 shrink-0 flex-col overflow-y-auto border-r border-zinc-200 bg-white lg:flex">
           <div className="px-5 py-5">
             <Link href="/" className="text-xs font-semibold uppercase tracking-wide text-brand-700">
               Docs Assistant
@@ -37,8 +38,16 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             <Suspense fallback={<NavFallback compact />}>
               <NavForViewer compact />
             </Suspense>
+            <details className="text-sm">
+              <summary className="cursor-pointer text-xs text-zinc-500">Account</summary>
+              <div className="pt-3">
+                <Suspense fallback={<Skeleton className="h-24" />}>
+                  <Account />
+                </Suspense>
+              </div>
+            </details>
           </div>
-          <main className="flex w-full flex-1 flex-col">{children}</main>
+          <main className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto">{children}</main>
         </div>
       </div>
     </div>
