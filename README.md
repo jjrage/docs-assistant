@@ -12,10 +12,53 @@ apartment community in Lexington, KY. Its 18 documents (a lease, house rules, an
 schedule, maintenance procedures, move-in and move-out checklists and more; 14 PDF, 4 Word) were written for this
 demo. Nothing in the app is specific to property management: each company is a separate tenant with its own documents.
 
-> **Status:** feature-complete. Live demo: _link after deployment_. One click gives you a private copy of the demo
-> company for 24 hours, as a resident or as the property manager.
+> **Live demo: [docs-assistant-rose.vercel.app](https://docs-assistant-rose.vercel.app).** One click gives you a
+> private copy of the demo company for 24 hours, as a resident or as the property manager.
 
-<!-- Demo video and screenshots go here. -->
+<!-- Demo video goes here. -->
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/answer-source.png" alt="An answer with numbered sources and the cited page open beside the chat">
+      <br><sub>Every claim is numbered; the cited page opens beside the chat with the lines highlighted</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/spanish.png" alt="A question in Spanish answered in Spanish with citations">
+      <br><sub>Asked in Spanish, answered in Spanish from English documents, with the same citations</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <img src="docs/screenshots/handoff.png" alt="An answer saying the documents don't cover the question and that it went to the team">
+      <br><sub>Not in the documents: the assistant says so and passes the question to the team</sub>
+    </td>
+    <td>
+      <img src="docs/screenshots/inbox.png" alt="The manager's inbox with the question, the reason and the closest passages">
+      <br><sub>The manager's inbox: the question, why it came, what came closest</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <img src="docs/screenshots/reply.png" alt="The team's reply shown in the resident's chat">
+      <br><sub>The team's reply appears in the resident's chat, under the question</sub>
+    </td>
+    <td>
+      <img src="docs/screenshots/frequent-questions.png" alt="Frequent questions grouped by meaning">
+      <br><sub>Frequent questions, grouped by meaning across wording and languages</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <img src="docs/screenshots/answer-log.png" alt="The answer log with tokens, cost and time per answer">
+      <br><sub>Answer log: tokens, cost and time of every answer</sub>
+    </td>
+    <td>
+      <img src="docs/screenshots/documents.png" alt="The documents page with the sample documents and the upload form">
+      <br><sub>Documents with versions and effective dates; uploads stay in the visitor's private copy</sub>
+    </td>
+  </tr>
+</table>
 
 ## What a company gets
 
