@@ -18,6 +18,7 @@
  *   npm run eval -- --only q01,q36 --reps 2 --concurrency 2
  *   npm run eval -- --voyage-rpm 2000            pace Voyage for an account with a payment method (default 3)
  *   npm run eval -- --check                      every expected passage is in the index (no API calls)
+ *   npm run eval -- --variant v2 --regrade claude-sonnet-5-5   the saved answers by another judge
  *   npm run eval -- --calibrate                  the judge on reference answers (≈100%) and empty or
  *                                                wrong answers (≈0%) before trusting it
  *
@@ -65,6 +66,8 @@ const only = flag("only")?.split(",");
 const calibrate = args.includes("--calibrate");
 // Only checks that every expected passage is found in the indexed documents; no API calls, no keys.
 const checkOnly = args.includes("--check");
+// Re-grades a variant's saved answers with another judge and lists disagreements (no model calls).
+const regradeWith = flag("regrade");
 const caseTimeoutMs = 180_000;
 
 const { NEXT_PUBLIC_SUPABASE_URL: url } = parseEnv(publicEnvSchema, process.env, "public");
@@ -576,6 +579,33 @@ async function runCalibration(cases: Case[]) {
   );
 }
 
+async function regrade(cases: Case[], otherJudge: string) {
+  const rows = await readJsonl<Row>(path.join(variantDir, "results.jsonl"));
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  let same = 0;
+  await pool(rows, concurrency, async (row) => {
+    const c = byId.get(row.prompt_id);
+    if (!c) return;
+    const verdict = await judge(client, otherJudge, {
+      question: c.question,
+      behavior: c.expected_behavior,
+      referenceAnswer: c.expected_answer,
+      keyFacts: c.must_include,
+      answer: row.meta.answer,
+      handedOff: row.meta.handed_off,
+    });
+    if ((verdict.correct ? 1 : 0) === row.grade.answer_correct) same += 1;
+    else {
+      console.log(
+        `${row.prompt_id}#${row.rep}: ${row.judge_model} said ${row.grade.answer_correct ? "correct" : "wrong"}, ${otherJudge} says ${verdict.correct ? "correct" : "wrong"}
+  ${row.judge_model}: ${row.explanation.answer_correct}
+  ${otherJudge}: ${verdict.explanation}`,
+      );
+    }
+  });
+  console.log(`${variant}: judges agree on ${same}/${rows.length} answers.`);
+}
+
 // --- main -------------------------------------------------------------------------------------------
 async function main() {
   const { data: template } = await db
@@ -595,6 +625,7 @@ async function main() {
     return;
   }
   if (calibrate) return runCalibration(cases);
+  if (regradeWith) return regrade(cases, regradeWith);
 
   await mkdir(variantDir, { recursive: true });
   const done = new Set(
