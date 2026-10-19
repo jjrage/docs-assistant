@@ -39,7 +39,7 @@ import { costMicroUsd } from "@/server/ai/pricing";
 import { systemPrompt } from "@/server/ai/prompt";
 import type { AnswerSource } from "@/server/ai/sources";
 import { searchChunks } from "@/server/search/search";
-import { voyageEmbedder } from "@/server/search/voyage";
+import { patient, voyageEmbedder } from "@/server/search/voyage";
 
 import { judge, type Behavior } from "./judge";
 
@@ -75,7 +75,7 @@ const db = createClient<Database>(url, env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY ?? "unused", maxRetries: 4 });
-const embed = voyageEmbedder(env.VOYAGE_API_KEY ?? "unused");
+const embed = voyageEmbedder(env.VOYAGE_API_KEY ?? "unused", patient);
 
 const runsDir = path.join("evals", "runs");
 const variantDir = path.join(runsDir, variant);

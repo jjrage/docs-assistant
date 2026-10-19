@@ -21,7 +21,7 @@ import { parseDemoMarkdown, type DemoMeta } from "@/demo/markdown";
 import { documentsBucket, processDocument } from "@/server/documents/process";
 import { limits } from "@/server/limits";
 import { hashEmbedder } from "@/server/search/hash-embedder";
-import { voyageEmbedder } from "@/server/search/voyage";
+import { patient, voyageEmbedder } from "@/server/search/voyage";
 
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 
@@ -42,7 +42,8 @@ if (!password)
 const db = createClient<Database>(url, env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-const embed = offline || !env.VOYAGE_API_KEY ? hashEmbedder : voyageEmbedder(env.VOYAGE_API_KEY);
+const embed =
+  offline || !env.VOYAGE_API_KEY ? hashEmbedder : voyageEmbedder(env.VOYAGE_API_KEY, patient);
 
 const mime = {
   pdf: "application/pdf",

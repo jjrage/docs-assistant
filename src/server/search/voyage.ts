@@ -30,10 +30,19 @@ export class EmbeddingError extends Error {
   }
 }
 
+/**
+ * How long to keep retrying a rate-limited or failing request. Interactive use (the chat) gives up quickly;
+ * batch jobs (seeding, evals) wait out per-minute limits.
+ */
+export type RetryPolicy = { attempts: number; maxWaitMs: number };
+const interactive: RetryPolicy = { attempts: 3, maxWaitMs: 8_000 };
+export const patient: RetryPolicy = { attempts: 8, maxWaitMs: 65_000 };
+
 async function request(
   apiKey: string,
   input: string[],
   inputType: InputType,
+  retry: RetryPolicy,
 ): Promise<VoyageResponse> {
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(endpoint, {
@@ -51,10 +60,11 @@ async function request(
 
     // Rate limits and server errors are retried with backoff; anything else is a configuration problem.
     const retryable = response.status === 429 || response.status >= 500;
-    if (retryable && attempt < 4) {
+    if (retryable && attempt < retry.attempts) {
       const after = Number(response.headers.get("retry-after"));
-      const wait = Number.isFinite(after) && after > 0 ? after * 1000 : 1000 * 2 ** attempt;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(wait, 20_000)));
+      const backoff = 2000 * 2 ** attempt * (0.75 + Math.random() / 2);
+      const wait = Number.isFinite(after) && after > 0 ? after * 1000 : backoff;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(wait, retry.maxWaitMs)));
       continue;
     }
     const detail = (await response.text()).slice(0, 300);
@@ -62,13 +72,13 @@ async function request(
   }
 }
 
-export function voyageEmbedder(apiKey: string): Embedder {
+export function voyageEmbedder(apiKey: string, retry: RetryPolicy = interactive): Embedder {
   return async (texts, inputType) => {
     const vectors: number[][] = [];
     let tokens = 0;
     for (let start = 0; start < texts.length; start += batchSize) {
       const batch = texts.slice(start, start + batchSize);
-      const result = await request(apiKey, batch, inputType);
+      const result = await request(apiKey, batch, inputType, retry);
       const ordered = [...result.data].sort((a, b) => a.index - b.index);
       if (ordered.length !== batch.length) {
         throw new EmbeddingError("Voyage AI returned a different number of embeddings", null);
