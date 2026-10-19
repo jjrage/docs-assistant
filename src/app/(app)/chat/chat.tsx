@@ -102,9 +102,13 @@ export function Chat({
       setOpen(null);
     }
   } else if (initialTurns !== syncedFrom && !busy) {
-    // A server refresh (after an answer, or while waiting for staff) brings the saved turns.
+    // A server refresh (after an answer, or while waiting for staff) brings the saved turns. A turn that
+    // failed was never saved: if it came after them, it stays on screen with its error.
+    const saved = new Set(initialTurns.map((t) => t.key));
+    const lastSaved = turns.findLastIndex((t) => saved.has(t.key));
+    const failed = turns.slice(lastSaved + 1).filter((t) => t.error);
     setSyncedFrom(initialTurns);
-    setTurns(initialTurns);
+    setTurns(failed.length ? [...initialTurns, ...failed] : initialTurns);
   }
 
   useEffect(() => {
