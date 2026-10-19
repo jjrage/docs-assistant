@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { ChatEvent } from "@/server/ai/answer";
 import type { ChatTurn } from "@/server/ai/history";
@@ -45,6 +45,9 @@ export function Chat({
   showCost: boolean;
 }) {
   const router = useRouter();
+  // After an answer the page reloads its data from the server (and, for a new conversation, becomes
+  // /chat/<id>, which mounts a fresh chat). Input waits for that, so nothing typed meanwhile is lost.
+  const [refreshing, startRefresh] = useTransition();
   const [conversationId, setConversationId] = useState(initialId);
   const [turns, setTurns] = useState<LiveTurn[]>(initialTurns);
   const [busy, setBusy] = useState(false);
@@ -192,7 +195,7 @@ export function Chat({
       }));
     } finally {
       setBusy(false);
-      router.refresh();
+      startRefresh(() => router.refresh());
     }
   }
 
@@ -248,6 +251,7 @@ export function Chat({
         >
           <div className="mx-auto flex max-w-2xl items-end gap-2">
             <textarea
+              disabled={refreshing}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
@@ -262,7 +266,12 @@ export function Chat({
               aria-label="Your question"
               className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border-0 px-4 py-2.5 text-sm shadow-sm ring-1 ring-inset ring-zinc-300 focus:ring-2 focus:ring-brand-600"
             />
-            <Button type="submit" size="lg" className="h-11" disabled={busy || !question.trim()}>
+            <Button
+              type="submit"
+              size="lg"
+              className="h-11"
+              disabled={busy || refreshing || !question.trim()}
+            >
               {busy ? <Spinner /> : "Ask"}
             </Button>
           </div>

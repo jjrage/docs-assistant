@@ -16,6 +16,7 @@
  *   npm run eval -- --variant v1 --effort medium
  *   npm run eval -- --variant v2 --model claude-sonnet-5-5
  *   npm run eval -- --only q01,q36 --reps 2 --concurrency 2
+ *   npm run eval -- --voyage-rpm 2000            pace Voyage for an account with a payment method (default 3)
  *   npm run eval -- --check                      every expected passage is in the index (no API calls)
  *   npm run eval -- --calibrate                  the judge on reference answers (≈100%) and empty or
  *                                                wrong answers (≈0%) before trusting it
@@ -39,7 +40,7 @@ import { costMicroUsd } from "@/server/ai/pricing";
 import { systemPrompt } from "@/server/ai/prompt";
 import type { AnswerSource } from "@/server/ai/sources";
 import { searchChunks } from "@/server/search/search";
-import { patient, voyageEmbedder } from "@/server/search/voyage";
+import { paced, patient, voyageEmbedder, type Embedder } from "@/server/search/voyage";
 
 import { judge, type Behavior } from "./judge";
 
@@ -56,7 +57,9 @@ if (!/^(baseline|v\d+)$/.test(variant)) throw new Error("--variant must be basel
 const model = flag("model") ?? "claude-opus-5-5";
 const effort = (flag("effort") ?? "low") as Effort;
 const reps = Number(flag("reps") ?? 1);
-const concurrency = Number(flag("concurrency") ?? 4);
+const concurrency = Number(flag("concurrency") ?? 3);
+// Voyage requests per minute: 3 without a payment method on the account, far more with one.
+const voyageRpm = Number(flag("voyage-rpm") ?? 3);
 const judgeModel = flag("judge") ?? "claude-sonnet-5-5";
 const only = flag("only")?.split(",");
 const calibrate = args.includes("--calibrate");
@@ -75,9 +78,42 @@ const db = createClient<Database>(url, env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY ?? "unused", maxRetries: 4 });
-const embed = voyageEmbedder(env.VOYAGE_API_KEY ?? "unused", patient);
-
 const runsDir = path.join("evals", "runs");
+const embed = cachedEmbedder(
+  paced(
+    voyageEmbedder(env.VOYAGE_API_KEY ?? "unused", patient),
+    Math.ceil(60_000 / voyageRpm) + 1000,
+  ),
+  path.join(runsDir, "query-embeddings.json"),
+);
+
+/**
+ * Query embeddings cached on disk: every variant asks the same 50 questions, so only the first run pays
+ * Voyage for them (the rows still report the original token counts, so cost matches production).
+ */
+function cachedEmbedder(inner: Embedder, file: string): Embedder {
+  let cache: Record<string, { vector: number[]; tokens: number }> | null = null;
+  const load = async () => {
+    cache ??= existsSync(file) ? JSON.parse(await readFile(file, "utf8")) : {};
+    return cache!;
+  };
+  return async (texts, inputType) => {
+    const store = await load();
+    const key = (text: string) => `${inputType}:${text}`;
+    if (texts.length === 1 && store[key(texts[0]!)]) {
+      const hit = store[key(texts[0]!)]!;
+      return { vectors: [hit.vector], tokens: hit.tokens };
+    }
+    const result = await inner(texts, inputType);
+    if (texts.length === 1) {
+      store[key(texts[0]!)] = { vector: result.vectors[0]!, tokens: result.tokens };
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, JSON.stringify(store));
+    }
+    return result;
+  };
+}
+
 const variantDir = path.join(runsDir, variant);
 
 // --- cases ------------------------------------------------------------------------------------------
