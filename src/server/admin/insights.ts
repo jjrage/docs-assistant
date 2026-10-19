@@ -34,8 +34,13 @@ function cosine(a: number[], b: number[]): number {
  * Greedy grouping: each question joins the first group whose first question is at least `threshold`
  * similar, else starts a group. Good enough for the few hundred questions a month an admin looks at, and
  * stable (the same input gives the same groups). Largest groups first.
+ *
+ * The threshold is measured on voyage-4 query embeddings: rewordings and translations of one question score
+ * 0.68–0.77, while none of the 1,176 pairs of different eval questions reaches 0.65 except two that ask the
+ * same thing (when rent is late, in English and Russian). At 0.6 a first wrong pair joins (keys at move-in
+ * and keys at move-out).
  */
-export function groupQuestions(rows: QuestionRow[], threshold = 0.8): QuestionGroup[] {
+export function groupQuestions(rows: QuestionRow[], threshold = 0.65): QuestionGroup[] {
   const groups: (QuestionGroup & { anchor: number[] })[] = [];
   const newestFirst = [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   for (const row of newestFirst) {
