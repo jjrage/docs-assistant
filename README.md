@@ -146,18 +146,22 @@ ambiguous. Each question goes through the app's real answer loop, search and mod
 
 | Model (effort low)             | Correct answers | Right source cited | Not in the documents → handed off | Needless hand-offs | Old vs new rule | Injections ignored | Cost per answer (median) | Time to answer (median · p90) | First words (median) |
 | ------------------------------ | --------------- | ------------------ | --------------------------------- | ------------------ | --------------- | ------------------ | ------------------------ | ----------------------------- | -------------------- |
-| **Claude Haiku 5.5** (default) | **94%** (47/50) | 95% (38/40)        | 10/10                             | 0/40               | 2/2             | 2/2                | **$0.0010**              | 4.5 s · 6.9 s                 | 3.1 s                |
+| **Claude Haiku 5.5** (default) | **94%** (47/50) | 98% (39/40)        | 10/10                             | 2/40               | 2/2             | 2/2                | **$0.0010**              | 4.2 s · 6.7 s                 | 2.7 s                |
 | Claude Sonnet 5.5              | 92% (46/50)     | 93% (37/40)        | 10/10                             | 0/40               | 2/2             | 2/2                | $0.016                   | 3.9 s · 6.1 s                 | 1.2 s                |
 | Claude Opus 5.5                | 96% (48/50)     | 90% (36/40)        | 10/10                             | 0/40               | 2/2             | 2/2                | $0.034                   | 6.0 s · 9.5 s                 | 2.4 s                |
 
+Haiku runs on the current prompt; Sonnet and Opus were measured with the earlier wording of the hand-off instruction
+(see "I don't know" that reaches someone below), on which Haiku scored 94%, 95%, 10/10 and 0/40.
+
 **Reading it.** On 50 questions the 95% confidence interval is about ±7 points, so the three models are not
 distinguishable on accuracy; they differ in price (Haiku is 30 times cheaper than Opus) and speed. Haiku 5.5 is
-the default. All three handed off every question the documents don't answer, made no needless hand-offs, followed
-the newer pet policy and ignored both planted instructions. All three missed the ambiguous question ("how much do you
-charge if I'm late?" can mean late rent or a late key return; each answered only about rent). The other six misses
-across the three runs hedged where the documents are explicit (for example "the documents don't say whether a text
-counts as notice" when the procedure says texts are not accepted), suggested patching a wall that the move-out guide
-says not to patch, or gave a wrong phone number before correcting it.
+the default. All three handed off every question the documents don't answer, followed the newer pet policy and
+ignored both planted instructions. Haiku's two "needless" hand-offs are partial: it answered from the documents and
+passed on only the part they don't cover (whether a payment plan can split rent over two weeks, a guest's car). All
+three missed the ambiguous question ("how much do you charge if I'm late?" can mean late rent or a late key return;
+each answered only about rent). The other misses hedged where the documents are explicit (for example "the
+documents don't say whether a text counts as notice" when the procedure says texts are not accepted), suggested
+patching a wall that the move-out guide says not to patch, or gave a wrong phone number before correcting it.
 
 **How it is graded.**
 
@@ -176,7 +180,7 @@ says not to patch, or gave a wrong phone number before correcting it.
 ```bash
 npm run eval -- --variant baseline --model claude-opus-5-5
 npm run eval -- --variant v1 --model claude-sonnet-5-5
-npm run eval -- --variant v2 --model claude-haiku-5-5
+npm run eval -- --variant v3 --model claude-haiku-5-5
 npm run eval -- --calibrate          # the judge against reference and wrong answers
 ```
 
@@ -189,7 +193,7 @@ Measured in the eval above at list prices (October 2026), each question starting
 
 | Model             | Median per answer | Most expensive answer | A day at the demo's limit (400 questions) |
 | ----------------- | ----------------- | --------------------- | ----------------------------------------- |
-| Claude Haiku 5.5  | $0.0010           | $0.0021               | ≈ $0.45                                   |
+| Claude Haiku 5.5  | $0.0010           | $0.0023               | ≈ $0.45                                   |
 | Claude Sonnet 5.5 | $0.016            | $0.039                | ≈ $7                                      |
 | Claude Opus 5.5   | $0.034            | $0.064                | ≈ $15                                     |
 
@@ -220,10 +224,14 @@ passages per company, an exact scan inside the company is faster anyway.
 
 **"I don't know" that reaches someone.** Two model behaviours had to be handled. Claude Opus 5.5 returns text it
 writes before a tool call as hidden progress notes, so "the documents don't cover this" written before the hand-off
-never reached the person; the prompt now asks for the hand-off first and the explanation after. In the eval pilot,
-Claude Haiku 5.5 sometimes wrote "I've passed your question to the team" without calling the hand-off tool, so
-nobody would ever reply; the chat's "sent to the team" notice comes only from the server's record, and the eval now
-counts such an answer as wrong.
+never reached the person; the prompt now asks for the hand-off first and the explanation after. Claude Haiku 5.5
+sometimes wrote "I've passed your question to the team" without calling the hand-off tool, so nobody would ever
+reply: twice in a row on "Can I charge my electric car in the garage?" while recording the demo video. The cause
+was two instructions that disagreed: the prompt said to hand off first and then say the question was passed on,
+while the tool's description still said to call it after telling the person. With both saying "hand off first" and
+the model told not to announce the hand-off itself (the chat's "sent to the team" notice, shown only from the
+server's record, does that), the same question was handed off 10 times out of 10. The eval also counts an answer
+that claims a hand-off the server did not make as wrong.
 
 **A public demo without shared mess.** Every visitor gets a private copy of the demo company for a day. Copying 18
 indexed documents per visitor would multiply storage, so a sandbox instead points at the template company: row-level
