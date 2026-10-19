@@ -6,16 +6,16 @@ against a prompt injection planted in a document, 1 ambiguous. Answers graded by
 test) against reference answers; pages and hand-offs checked in code. Cost = Claude tokens + query embeddings at
 list prices.
 
-| Variant                               | Correct answers               | Right page cited | Not-in-docs handed off | Needless hand-offs | Version conflicts | Injections resisted | Cost / answer (median · mean) | Time (median · p90) | First words (median) |
-| ------------------------------------- | ----------------------------- | ---------------- | ---------------------- | ------------------ | ----------------- | ------------------- | ----------------------------- | ------------------- | -------------------- |
-| baseline: claude-opus-5-5, effort low | **100%** (5/5; 95% CI 57–100) | 100% (4/4)       | 1/1                    | 0/4                | 1/1               | 1/1                 | $0.0353 · $0.0410             | 63.2 s · 146.4 s    | 59.6 s               |
-| v1: claude-sonnet-5-5, effort low     | **100%** (5/5; 95% CI 57–100) | 100% (4/4)       | 1/1                    | 0/4                | 1/1               | 1/1                 | $0.0161 · $0.0209             | 4.1 s · 70.5 s      | 2.2 s                |
-| v2: claude-haiku-5-5, effort low      | **100%** (5/5; 95% CI 57–100) | 100% (4/4)       | 0/1                    | 0/4                | 1/1               | 1/1                 | $0.0009 · $0.0012             | 4.1 s · 44.5 s      | 3.3 s                |
+| Variant | Correct answers | Right source cited | Not-in-docs handed off | Needless hand-offs | Version conflicts | Injections resisted | Cost / answer (median · mean) | Time (median · p90) | First words (median) |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline: claude-opus-5-5, effort low | **96%** (48/50; 95% CI 87–99) | 90% (36/40) | 10/10 | 0/40 | 2/2 | 2/2 | $0.0337 · $0.0367 | 6.0 s · 9.5 s | 2.4 s |
+| v1: claude-sonnet-5-5, effort low | **92%** (46/50; 95% CI 81–97) | 93% (37/40) | 10/10 | 0/40 | 2/2 | 2/2 | $0.0159 · $0.0174 | 3.9 s · 6.1 s | 1.2 s |
+| v2: claude-haiku-5-5, effort low | **94%** (47/50; 95% CI 84–98) | 95% (38/40) | 10/10 | 0/40 | 2/2 | 2/2 | $0.0010 · $0.0011 | 4.5 s · 6.9 s | 3.1 s |
 
 By category (correct answers):
 
-| Variant  | Answerable (EN) | Answerable (ES/RU) | Not in documents | Version conflicts | Injection | Ambiguous |
-| -------- | --------------- | ------------------ | ---------------- | ----------------- | --------- | --------- |
-| baseline | 1/1             | 1/1                | 1/1              | 1/1               | 1/1       | 0/0       |
-| v1       | 1/1             | 1/1                | 1/1              | 1/1               | 1/1       | 0/0       |
-| v2       | 1/1             | 1/1                | 1/1              | 1/1               | 1/1       | 0/0       |
+| Variant | Answerable (EN) | Answerable (ES/RU) | Not in documents | Version conflicts | Injection | Ambiguous |
+|---|---|---|---|---|---|---|
+| baseline | 28/29 | 6/6 | 10/10 | 2/2 | 2/2 | 0/1 |
+| v1 | 26/29 | 6/6 | 10/10 | 2/2 | 2/2 | 0/1 |
+| v2 | 27/29 | 6/6 | 10/10 | 2/2 | 2/2 | 0/1 |

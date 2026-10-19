@@ -19,6 +19,7 @@
  *   npm run eval -- --voyage-rpm 2000            pace Voyage for an account with a payment method (default 3)
  *   npm run eval -- --check                      every expected passage is in the index (no API calls)
  *   npm run eval -- --variant v2 --regrade claude-sonnet-5-5   the saved answers by another judge
+ *   npm run eval -- --variant v1 --rejudge                     re-grade saved answers after a rubric change
  *   npm run eval -- --calibrate                  the judge on reference answers (≈100%) and empty or
  *                                                wrong answers (≈0%) before trusting it
  *
@@ -61,13 +62,16 @@ const reps = Number(flag("reps") ?? 1);
 const concurrency = Number(flag("concurrency") ?? 3);
 // Voyage requests per minute: 3 without a payment method on the account, far more with one.
 const voyageRpm = Number(flag("voyage-rpm") ?? 3);
-const judgeModel = flag("judge") ?? "claude-sonnet-5-5";
+// Haiku 5.5: agreed with the reference/wrong-answer calibration on 180/180 and with Sonnet 5.5 on the pilot.
+const judgeModel = flag("judge") ?? "claude-haiku-5-5";
 const only = flag("only")?.split(",");
 const calibrate = args.includes("--calibrate");
 // Only checks that every expected passage is found in the indexed documents; no API calls, no keys.
 const checkOnly = args.includes("--check");
 // Re-grades a variant's saved answers with another judge and lists disagreements (no model calls).
 const regradeWith = flag("regrade");
+// Re-grades a variant's saved answers with the current judge and rewrites its results (no model calls).
+const rejudgeOnly = args.includes("--rejudge");
 const caseTimeoutMs = 180_000;
 
 const { NEXT_PUBLIC_SUPABASE_URL: url } = parseEnv(publicEnvSchema, process.env, "public");
@@ -206,19 +210,31 @@ async function loadCases(
 }
 
 // --- grading ----------------------------------------------------------------------------------------
-function pageCorrect(sources: AnswerSource[], expected: Expected[], keyFacts: string[]): boolean {
-  return sources.some(
-    (s) =>
-      expected.some(
-        (e) =>
-          e.documentId === s.documentId &&
-          (e.page !== null
-            ? e.page === s.page
-            : (e.seq >= s.blockStart && e.seq < s.blockEnd) ||
-              (s.section !== null && s.section === e.section)),
-      ) ||
-      (keyFacts.length > 0 &&
-        keyFacts.every((fact) => normalize(s.quote).includes(normalize(fact)))),
+type Cited = Pick<
+  AnswerSource,
+  "documentId" | "page" | "section" | "blockStart" | "blockEnd" | "quote"
+>;
+
+/**
+ * The answer is sourced right if a citation points at an expected passage (same document and page, or for
+ * Word the cited paragraph or its section), or if the cited passages together state every key fact (the
+ * same rule often appears in two documents, e.g. the lease and a procedure).
+ */
+function pageCorrect(sources: Cited[], expected: Expected[], keyFacts: string[]): boolean {
+  const atExpected = sources.some((s) =>
+    expected.some(
+      (e) =>
+        e.documentId === s.documentId &&
+        (e.page !== null
+          ? e.page === s.page
+          : (e.seq >= s.blockStart && e.seq < s.blockEnd) ||
+            (s.section !== null && s.section === e.section)),
+    ),
+  );
+  const quoted = normalize(sources.map((s) => s.quote).join(" "));
+  return (
+    atExpected ||
+    (keyFacts.length > 0 && keyFacts.every((fact) => quoted.includes(normalize(fact))))
   );
 }
 
@@ -314,6 +330,8 @@ type Row = {
     effort: Effort;
     handed_off: boolean;
     sources: string[];
+    cited?: Cited[];
+    followed_document_instructions?: boolean;
     answer: string;
     searches: string[];
   };
@@ -391,6 +409,9 @@ async function runCase(
     answer_correct: verdict.correct ? 1 : 0,
     handoff_correct: handedOff === (c.expected_behavior === "say_not_found_and_hand_off") ? 1 : 0,
   };
+  if (c.category === "prompt_injection") {
+    grade.injection_resisted = verdict.followedDocumentInstructions ? 0 : 1;
+  }
   const explanation: Record<string, string> = { answer_correct: verdict.explanation };
   if (expected.length > 0) {
     grade.page_correct = pageCorrect(result.answer.sources, expected, c.must_include) ? 1 : 0;
@@ -436,6 +457,17 @@ async function runCase(
       effort,
       handed_off: handedOff,
       sources: result.answer.sources.map((s) => `${s.title}${s.page ? `, p. ${s.page}` : ""}`),
+      cited: result.answer.sources.map(
+        ({ documentId, page, section, blockStart, blockEnd, quote }) => ({
+          documentId,
+          page,
+          section,
+          blockStart,
+          blockEnd,
+          quote,
+        }),
+      ),
+      followed_document_instructions: verdict.followedDocumentInstructions,
       answer,
       searches: result.searches,
     },
@@ -490,7 +522,7 @@ async function writeSummary() {
     "test) against reference answers; pages and hand-offs checked in code. Cost = Claude tokens + query embeddings at",
     "list prices.",
     "",
-    "| Variant | Correct answers | Right page cited | Not-in-docs handed off | Needless hand-offs | Version conflicts | Injections resisted | Cost / answer (median · mean) | Time (median · p90) | First words (median) |",
+    "| Variant | Correct answers | Right source cited | Not-in-docs handed off | Needless hand-offs | Version conflicts | Injections resisted | Cost / answer (median · mean) | Time (median · p90) | First words (median) |",
     "|---|---|---|---|---|---|---|---|---|---|",
   ];
   for (const v of variants) {
@@ -503,7 +535,7 @@ async function writeSummary() {
     const needless = rows.filter((r) => r.tags[0] !== "unanswerable" && r.meta.handed_off).length;
     const answerable = rows.filter((r) => r.tags[0] !== "unanswerable").length;
     const versions = rate(rows, "answer_correct", (r) => r.tags[0] === "conflicting_versions");
-    const injections = rate(rows, "answer_correct", (r) => r.tags[0] === "prompt_injection");
+    const injections = rate(rows, "injection_resisted", (r) => r.tags[0] === "prompt_injection");
     const costs = rows.map((r) => r.cost_usd);
     const times = rows.map((r) => r.latency_s);
     const first = rows.map((r) => r.first_token_s).filter((s): s is number => s !== null);
@@ -537,6 +569,7 @@ async function writeSummary() {
           { id: "answer_correct", label: "Correct", kind: "binary" },
           { id: "page_correct", label: "Right page", kind: "binary" },
           { id: "handoff_correct", label: "Hand-off OK", kind: "binary" },
+          { id: "injection_resisted", label: "Injection", kind: "binary" },
         ],
         perf_fields: [
           { id: "cost_usd", label: "Cost", unit: "$" },
@@ -600,6 +633,39 @@ async function runCalibration(cases: Case[]) {
   );
 }
 
+async function rejudge(cases: Case[], expected: Map<string, Expected[]>) {
+  const file = path.join(variantDir, "results.jsonl");
+  const rows = await readJsonl<Row>(file);
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  await pool(rows, concurrency, async (row) => {
+    const c = byId.get(row.prompt_id);
+    if (!c) return;
+    const verdict = await judge(client, judgeModel, {
+      question: c.question,
+      behavior: c.expected_behavior,
+      referenceAnswer: c.expected_answer,
+      keyFacts: c.must_include,
+      answer: row.meta.answer,
+      handedOff: row.meta.handed_off,
+    });
+    row.grade.answer_correct = verdict.correct ? 1 : 0;
+    if (c.category === "prompt_injection") {
+      row.grade.injection_resisted = verdict.followedDocumentInstructions ? 0 : 1;
+    }
+    row.explanation.answer_correct = verdict.explanation;
+    row.judge_model = verdict.model;
+    row.judge_usage = verdict.usage;
+    row.meta.followed_document_instructions = verdict.followedDocumentInstructions;
+    const wanted = expected.get(c.id) ?? [];
+    if (row.meta.cited && wanted.length > 0) {
+      row.grade.page_correct = pageCorrect(row.meta.cited, wanted, c.must_include) ? 1 : 0;
+    }
+  });
+  rows.sort((a, b) => a.prompt_id.localeCompare(b.prompt_id) || a.rep - b.rep);
+  await writeFile(file, rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
+  console.log(`${variant}: re-graded ${rows.length} answers with ${judgeModel}.`);
+}
+
 async function regrade(cases: Case[], otherJudge: string) {
   const rows = await readJsonl<Row>(path.join(variantDir, "results.jsonl"));
   const byId = new Map(cases.map((c) => [c.id, c]));
@@ -647,6 +713,10 @@ async function main() {
   }
   if (calibrate) return runCalibration(cases);
   if (regradeWith) return regrade(cases, regradeWith);
+  if (rejudgeOnly) {
+    await rejudge(cases, expected);
+    return writeSummary();
+  }
 
   await mkdir(variantDir, { recursive: true });
   const done = new Set(
