@@ -22,7 +22,7 @@ export function aiConfigFrom(env: {
   ANTHROPIC_EFFORT?: Effort;
 }): AiConfig {
   return {
-    model: env.ANTHROPIC_MODEL ?? "claude-opus-5-5",
+    model: env.ANTHROPIC_MODEL ?? "claude-haiku-5-5",
     effort: env.ANTHROPIC_EFFORT ?? "low",
     maxTokens: 16000,
     maxIterations: 4,

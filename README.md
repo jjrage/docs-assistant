@@ -96,11 +96,68 @@ text without whitespace, cell separators or hyphens, and highlighted. Word docum
 
 ## Evals
 
-<!-- EVAL RESULTS -->
+50 questions a resident might ask, written for the demo documents ([the list](evals/QUESTIONS.md), with reference
+answers and the passages that support them): 35 the documents answer (7 asked in Spanish or Russian), 10 they don't
+cover, 2 where the 2024 and 2026 pet policies disagree, 2 aimed at prompt injections planted in the newsletter, and 1
+ambiguous. Each question goes through the app's real answer loop, search and model.
+
+| Model (effort low)             | Correct answers | Right source cited | Not in the documents → handed off | Needless hand-offs | Old vs new rule | Injections ignored | Cost per answer (median) | Time to answer (median · p90) | First words (median) |
+| ------------------------------ | --------------- | ------------------ | --------------------------------- | ------------------ | --------------- | ------------------ | ------------------------ | ----------------------------- | -------------------- |
+| **Claude Haiku 5.5** (default) | **94%** (47/50) | 95% (38/40)        | 10/10                             | 0/40               | 2/2             | 2/2                | **$0.0010**              | 4.5 s · 6.9 s                 | 3.1 s                |
+| Claude Sonnet 5.5              | 92% (46/50)     | 93% (37/40)        | 10/10                             | 0/40               | 2/2             | 2/2                | $0.016                   | 3.9 s · 6.1 s                 | 1.2 s                |
+| Claude Opus 5.5                | 96% (48/50)     | 90% (36/40)        | 10/10                             | 0/40               | 2/2             | 2/2                | $0.034                   | 6.0 s · 9.5 s                 | 2.4 s                |
+
+**Reading it.** On 50 questions the 95% confidence interval is about ±7 points, so the three models are not
+distinguishable on accuracy; they differ in price (Haiku is 30 times cheaper than Opus) and speed. Haiku 5.5 is
+the default. All three handed off every question the documents don't answer, made no needless hand-offs, followed
+the newer pet policy and ignored both planted instructions. All three missed the ambiguous question ("how much do you
+charge if I'm late?" can mean late rent or a late key return; each answered only about rent). The other six misses
+across the three runs hedged where the documents are explicit (for example "the documents don't say whether a text
+counts as notice" when the procedure says texts are not accepted), suggested patching a wall that the move-out guide
+says not to patch, or gave a wrong phone number before correcting it.
+
+**How it is graded.**
+
+- **Correct answer:** a judge model (Claude Haiku 5.5) compares the answer with the reference answer and its key
+  facts, using a rubric per question type (answer / not in the documents / newer version / injection / ambiguous).
+  An answer that claims a hand-off the server did not make counts as wrong. Before use, the judge passed all 50
+  reference answers and failed all 130 wrong ones (empty, "I don't know", an answer to another question, a made-up
+  answer); on the 150 answers above it agrees with Claude Sonnet 5.5 as a judge on 144, and where they differ it is
+  usually the stricter one.
+- **Right source:** a citation points at the page of the expected passage (the paragraph or section for Word), or
+  the cited passages state every key fact (several rules appear in both the lease and a procedure).
+- **Hand-offs** are checked in code: handed off exactly when the documents don't answer.
+- **Cost** is Claude's tokens plus the question's embedding at list prices; **time** runs from the question to the
+  complete answer, without waiting for an embedding rate limit (the eval account has none of Voyage's paid limits).
+
+```bash
+npm run eval -- --variant baseline --model claude-opus-5-5
+npm run eval -- --variant v1 --model claude-sonnet-5-5
+npm run eval -- --variant v2 --model claude-haiku-5-5
+npm run eval -- --calibrate          # the judge against reference and wrong answers
+```
+
+Per-question results and transcripts are written to `evals/runs/` and summarized in
+[`evals/RESULTS.md`](evals/RESULTS.md).
 
 ## Cost per answer
 
-<!-- COST -->
+Measured in the eval above at list prices (October 2026), each question starting a new conversation:
+
+| Model             | Median per answer | Most expensive answer | A day at the demo's limit (400 questions) |
+| ----------------- | ----------------- | --------------------- | ----------------------------------------- |
+| Claude Haiku 5.5  | $0.0010           | $0.0021               | ≈ $0.45                                   |
+| Claude Sonnet 5.5 | $0.016            | $0.039                | ≈ $7                                      |
+| Claude Opus 5.5   | $0.034            | $0.064                | ≈ $15                                     |
+
+A typical answer reads about 4,800 input tokens (the instructions and six passages) and writes 350 to 700. About a
+quarter of the questions trigger a second search, which adds a request. Follow-up questions in the same conversation
+re-read the earlier turns from the prompt cache at a tenth of the input price. Indexing the 18 demo documents took
+31,000 embedding tokens, $0.002 at Voyage's list price. Every answer is also logged in the app (Answer log) with its
+tokens, cost and timing, so the numbers can be checked on real traffic.
+
+The model is one setting (`ANTHROPIC_MODEL`). The public demo caps questions per person (40 a day) and in total
+(400 a day), and the API key has its own spending limit.
 
 ## What was hard, and how it is solved
 

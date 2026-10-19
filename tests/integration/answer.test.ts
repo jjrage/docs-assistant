@@ -102,6 +102,8 @@ describe("answering a question", () => {
           ],
         };
       },
+      // Opus, to check the server-side fallback and its prices (the default model, Haiku, has neither).
+      "claude-opus-5-5",
     );
 
     // The request: documents only as search results with citations, settings we rely on.
