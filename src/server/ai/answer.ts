@@ -72,6 +72,11 @@ export type TurnResult = {
   questionEmbedding: number[];
 };
 
+/** Models whose safety declines can be retried server-side (`fallbacks: "default"` on the Claude API). */
+function serverFallback(model: string): boolean {
+  return /^claude-(opus-5|opus-5-5|sonnet-5-5|fable-5-1)$/.test(model);
+}
+
 const searchInput = z.object({ query: z.string().min(1).max(500) });
 const handoffInput = z.object({
   question: z.string().min(1).max(2000),
@@ -122,8 +127,10 @@ export async function answerQuestion(
       // Tools and system prompt never change, and every turn appends: the whole prefix stays cached.
       cache_control: { type: "ephemeral" },
       // A safety-classifier decline is retried server-side on the model Anthropic picks for its category.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+      // Haiku has no server-side fallback; its declines are handled below like any other refusal.
+      ...(serverFallback(config.model)
+        ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
+        : {}),
     });
 
     let segment: Answer["segments"][number] | null = null;

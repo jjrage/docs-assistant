@@ -45,7 +45,11 @@ afterAll(async () => {
   await company.cleanup();
 });
 
-async function ask(question: string, script: (body: RequestBody, call: number) => Reply) {
+async function ask(
+  question: string,
+  script: (body: RequestBody, call: number) => Reply,
+  model?: string,
+) {
   const fake = await startFakeClaude(script);
   const events: ChatEvent[] = [];
   const handoffs: HandoffRequest[] = [];
@@ -53,7 +57,7 @@ async function ask(question: string, script: (body: RequestBody, call: number) =
     const result = await answerQuestion(
       {
         client: new Anthropic({ apiKey: "sk-ant-test", baseURL: fake.baseURL, maxRetries: 0 }),
-        config: aiConfigFrom({}),
+        config: aiConfigFrom({ ANTHROPIC_MODEL: model }),
         companyName: "Answer Test Homes",
         search: (query, count) =>
           searchChunks(admin, hashEmbedder, [company.companyId], query, count),
@@ -241,5 +245,16 @@ describe("answering a question", () => {
     }));
     expect(result.outcome).toBe("refused");
     expect(events.some((e) => e.type === "notice")).toBe(true);
+  });
+
+  it("sends no server-side fallback to Haiku, which has none", async () => {
+    const { requests } = await ask(
+      "How much is the returned payment charge?",
+      () => ({ stopReason: "end_turn", blocks: [{ type: "text", text: "$40." }] }),
+      "claude-haiku-5-5",
+    );
+    expect(requests[0]!.body.model).toBe("claude-haiku-5-5");
+    expect(requests[0]!.body.fallbacks).toBeUndefined();
+    expect(requests[0]!.headers["anthropic-beta"] ?? "").not.toContain("server-side-fallback");
   });
 });
