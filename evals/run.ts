@@ -529,57 +529,50 @@ async function writeSummary() {
 
 // --- calibration ------------------------------------------------------------------------------------
 async function runCalibration(cases: Case[]) {
-  const nulls = ["", "I don't know.", "Quiet hours are from 11:00 PM to 7:00 AM every day."];
-  let oracle = 0;
-  let nullPasses = 0;
-  let nullTotal = 0;
+  // Wrong answers the judge must fail: nothing, a non-answer, an answer to a different question, and,
+  // where the documents have no answer, a confident made-up one.
+  const wrongAnswers = ["", "I don't know.", "Quiet hours are from 11:00 PM to 7:00 AM every day."];
+  const madeUp = "Yes. Residents can use it for free; just ask the office to set it up for you.";
+  type Check = { c: Case; answer: string; handedOff: boolean; shouldPass: boolean };
+  const checks: Check[] = cases.flatMap((c) => {
+    const notInDocs = c.expected_behavior === "say_not_found_and_hand_off";
+    return [
+      { c, answer: c.expected_answer, handedOff: notInDocs, shouldPass: true },
+      ...(notInDocs
+        ? [{ c, answer: madeUp, handedOff: false, shouldPass: false }]
+        : wrongAnswers.map((answer) => ({ c, answer, handedOff: false, shouldPass: false }))),
+    ];
+  });
+  let agree = 0;
   let spent = 0;
-  for (const c of cases) {
-    const handedOff = c.expected_behavior === "say_not_found_and_hand_off";
-    const good = await judge(client, judgeModel, {
-      question: c.question,
-      behavior: c.expected_behavior,
-      referenceAnswer: c.expected_answer,
-      keyFacts: c.must_include,
-      answer: c.expected_answer,
-      handedOff,
+  const misses: string[] = [];
+  await pool(checks, concurrency, async (check) => {
+    const verdict = await judge(client, judgeModel, {
+      question: check.c.question,
+      behavior: check.c.expected_behavior,
+      referenceAnswer: check.c.expected_answer,
+      keyFacts: check.c.must_include,
+      answer: check.answer,
+      handedOff: check.handedOff,
     });
-    spent += costMicroUsd(good.model, {
-      input: good.usage.input_tokens,
-      output: good.usage.output_tokens,
+    spent += costMicroUsd(verdict.model, {
+      input: verdict.usage.input_tokens,
+      output: verdict.usage.output_tokens,
       cacheRead: 0,
       cacheWrite: 0,
       embedding: 0,
     });
-    if (good.correct) oracle += 1;
-    else console.log(`ORACLE FAILED ${c.id}: ${good.explanation}`);
-    // Wrong answers: only meaningful where the documents do have an answer.
-    if (handedOff) continue;
-    for (const wrong of nulls) {
-      const bad = await judge(client, judgeModel, {
-        question: c.question,
-        behavior: c.expected_behavior,
-        referenceAnswer: c.expected_answer,
-        keyFacts: c.must_include,
-        answer: wrong,
-        handedOff: false,
-      });
-      spent += costMicroUsd(bad.model, {
-        input: bad.usage.input_tokens,
-        output: bad.usage.output_tokens,
-        cacheRead: 0,
-        cacheWrite: 0,
-        embedding: 0,
-      });
-      nullTotal += 1;
-      if (bad.correct) {
-        nullPasses += 1;
-        console.log(`NULL PASSED ${c.id} with "${wrong}": ${bad.explanation}`);
-      }
+    if (verdict.correct === check.shouldPass) agree += 1;
+    else {
+      misses.push(
+        `${check.c.id} ${check.shouldPass ? "reference answer FAILED" : `wrong answer PASSED (${JSON.stringify(check.answer.slice(0, 40))})`}: ${verdict.explanation}`,
+      );
     }
-  }
+  });
+  const oracle = checks.filter((c) => c.shouldPass).length;
+  for (const miss of misses) console.log(miss);
   console.log(
-    `Judge ${judgeModel}: reference answers passed ${oracle}/${cases.length}; empty or wrong answers passed ${nullPasses}/${nullTotal}. Judge cost $${(spent / 1e6).toFixed(3)}.`,
+    `Judge ${judgeModel}: agreed on ${agree}/${checks.length} (${oracle} reference answers should pass, ${checks.length - oracle} wrong ones should fail). Judge cost $${(spent / 1e6).toFixed(3)}.`,
   );
 }
 

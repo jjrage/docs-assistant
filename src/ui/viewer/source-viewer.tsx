@@ -39,13 +39,16 @@ type Loaded = {
 export type SourceLocation = {
   documentId: string;
   page: number | null;
-  blockStart: number;
-  blockEnd: number;
+  /** Cited block ranges, [start, end): several passages of one page can be highlighted together. */
+  ranges: { start: number; end: number }[];
 };
 
+const cites = (location: SourceLocation, seq: number) =>
+  location.ranges.some((r) => seq >= r.start && seq < r.end);
+
 /**
- * Shows a cited passage in its document: a PDF opens on the cited page with the passage highlighted; a Word
- * document (no fixed pages) is shown as its text with the cited paragraphs highlighted.
+ * Shows cited passages in their document: a PDF opens on the cited page with the passages highlighted; a
+ * Word document (no fixed pages) is shown as its text with the cited paragraphs highlighted.
  */
 export function SourceViewer({
   location,
@@ -81,15 +84,19 @@ export function SourceViewer({
     );
   }
 
-  const cited = loaded.blocks.filter(
-    (b) => b.seq >= location.blockStart && b.seq < location.blockEnd,
-  );
   if (loaded.document.format === "pdf") {
+    const quotes = location.ranges.map((r) =>
+      loaded.blocks
+        .filter((b) => b.seq >= r.start && b.seq < r.end)
+        .map((b) => b.text)
+        .join(" "),
+    );
+    const first = loaded.blocks.find((b) => cites(location, b.seq));
     return (
       <PdfView
         url={`/api/documents/${location.documentId}/file`}
-        page={location.page ?? cited[0]?.page ?? 1}
-        quote={cited.map((b) => b.text).join(" ")}
+        page={location.page ?? first?.page ?? 1}
+        quotes={quotes}
       />
     );
   }
@@ -106,9 +113,10 @@ function DocxBlocks({
   compact: boolean;
 }) {
   const first = useRef<HTMLDivElement>(null);
+  const firstCited = blocks.find((b) => cites(location, b.seq))?.seq;
   useEffect(() => {
     first.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [location.blockStart, location.blockEnd]);
+  }, [firstCited]);
 
   return (
     <div
@@ -118,7 +126,7 @@ function DocxBlocks({
       )}
     >
       {blocks.map((block) => {
-        const cited = block.seq >= location.blockStart && block.seq < location.blockEnd;
+        const cited = cites(location, block.seq);
         const className = cn(
           "rounded px-1 -mx-1 transition-colors",
           cited && "bg-yellow-200/70",
@@ -132,7 +140,7 @@ function DocxBlocks({
         return (
           <div
             key={block.seq}
-            ref={block.seq === location.blockStart ? first : undefined}
+            ref={block.seq === firstCited ? first : undefined}
             className={className}
           >
             {block.kind === "table_row"

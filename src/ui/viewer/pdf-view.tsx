@@ -19,17 +19,17 @@ const escapeHtml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
- * One page of a PDF with the cited passage highlighted in the text layer and scrolled into view. Document
+ * One page of a PDF with the cited passages highlighted in the text layer and scrolled into view. Document
  * text goes into the text layer as HTML, so it is escaped: an uploaded file is untrusted input.
  */
 export default function PdfView({
   url,
   page: initialPage,
-  quote,
+  quotes,
 }: {
   url: string;
   page: number;
-  quote: string;
+  quotes: string[];
 }) {
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
@@ -80,14 +80,10 @@ export default function PdfView({
           width={width}
           renderAnnotationLayer={false}
           customTextRenderer={renderText}
-          onGetTextSuccess={(text) =>
-            setMarked(
-              highlightedItems(
-                text.items.map((item) => ("str" in item ? item.str : "")),
-                quote,
-              ),
-            )
-          }
+          onGetTextSuccess={(text) => {
+            const items = text.items.map((item) => ("str" in item ? item.str : ""));
+            setMarked(new Set(quotes.flatMap((quote) => [...highlightedItems(items, quote)])));
+          }}
           onRenderTextLayerSuccess={() =>
             container.current
               ?.querySelector(".textLayer mark")

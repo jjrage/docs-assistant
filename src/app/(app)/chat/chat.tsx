@@ -29,10 +29,45 @@ const suggestions = [
   "Can I charge my electric car in the garage?",
 ];
 
-function sourceLabel(source: AnswerSource): string {
-  return source.page
-    ? `${source.title}, p. ${source.page}`
-    : `${source.title}${source.section ? `, ${source.section}` : ""}`;
+/** Sources on the same PDF page (or in the same Word section) share one chip and open together. */
+type SourceGroup = {
+  key: string;
+  numbers: number[];
+  documentId: string;
+  title: string;
+  page: number | null;
+  section: string | null;
+  ranges: { start: number; end: number }[];
+};
+
+function groupSources(sources: AnswerSource[]): SourceGroup[] {
+  const groups: SourceGroup[] = [];
+  for (const s of sources) {
+    const key = `${s.documentId}|${s.page ?? s.section ?? ""}`;
+    const range = { start: s.blockStart, end: s.blockEnd };
+    const group = groups.find((g) => g.key === key);
+    if (group) {
+      group.numbers.push(s.n);
+      group.ranges.push(range);
+    } else {
+      groups.push({
+        key,
+        numbers: [s.n],
+        documentId: s.documentId,
+        title: s.title,
+        page: s.page,
+        section: s.section,
+        ranges: [range],
+      });
+    }
+  }
+  return groups;
+}
+
+function groupLabel(group: SourceGroup): string {
+  return group.page
+    ? `${group.title}, p. ${group.page}`
+    : `${group.title}${group.section ? `, ${group.section}` : ""}`;
 }
 
 export function Chat({
@@ -45,20 +80,29 @@ export function Chat({
   showCost: boolean;
 }) {
   const router = useRouter();
-  // After an answer the page reloads its data from the server (and, for a new conversation, becomes
-  // /chat/<id>, which mounts a fresh chat). Input waits for that, so nothing typed meanwhile is lost.
+  // After an answer the page reloads its data from the server (the conversation list, saved turns).
   const [refreshing, startRefresh] = useTransition();
   const [conversationId, setConversationId] = useState(initialId);
   const [turns, setTurns] = useState<LiveTurn[]>(initialTurns);
   const [busy, setBusy] = useState(false);
   const [question, setQuestion] = useState("");
-  const [open, setOpen] = useState<{ turn: string; source: AnswerSource } | null>(null);
+  const [open, setOpen] = useState<{ turn: string; group: SourceGroup } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
-  // A server refresh (after an answer, or while waiting for staff) brings the saved turns; adopt them once
-  // nothing is streaming.
+  // The same chat stays mounted across /chat and /chat?c=<id>. Another conversation (a link in the list, or
+  // "New question") starts over; the one this chat just created only gets its URL, nothing resets.
+  const [shownId, setShownId] = useState(initialId);
   const [syncedFrom, setSyncedFrom] = useState(initialTurns);
-  if (initialTurns !== syncedFrom && !busy) {
+  if (initialId !== shownId) {
+    setShownId(initialId);
+    if (initialId !== conversationId) {
+      setConversationId(initialId);
+      setTurns(initialTurns);
+      setSyncedFrom(initialTurns);
+      setOpen(null);
+    }
+  } else if (initialTurns !== syncedFrom && !busy) {
+    // A server refresh (after an answer, or while waiting for staff) brings the saved turns.
     setSyncedFrom(initialTurns);
     setTurns(initialTurns);
   }
@@ -76,7 +120,7 @@ export function Chat({
       case "conversation":
         if (!conversationId) {
           setConversationId(event.id);
-          window.history.replaceState(null, "", `/chat/${event.id}`);
+          window.history.replaceState(null, "", `/chat?c=${event.id}`);
         }
         break;
       case "status":
@@ -235,8 +279,8 @@ export function Chat({
                 key={turn.key}
                 turn={turn}
                 showCost={showCost}
-                openSource={(source) => setOpen({ turn: turn.key, source })}
-                active={open?.turn === turn.key ? open.source.n : null}
+                openGroup={(group) => setOpen({ turn: turn.key, group })}
+                active={open?.turn === turn.key ? open.group.key : null}
               />
             ))}
             <div ref={bottom} />
@@ -282,15 +326,15 @@ export function Chat({
         <aside className="fixed inset-0 z-30 flex flex-col bg-zinc-50 lg:static lg:inset-auto lg:z-auto lg:w-[46%] lg:max-w-3xl lg:border-l lg:border-zinc-200">
           <div className="flex items-start justify-between gap-3 border-b border-zinc-200 bg-white px-5 py-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-zinc-900">{open.source.title}</p>
+              <p className="truncate text-sm font-semibold text-zinc-900">{open.group.title}</p>
               <p className="truncate text-xs text-zinc-500">
-                {open.source.page ? `Page ${open.source.page}` : "Word document"}
-                {open.source.section ? ` · ${open.source.section}` : ""}
+                {open.group.page ? `Page ${open.group.page}` : "Word document"}
+                {open.group.section ? ` · ${open.group.section}` : ""}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-3">
               <Link
-                href={`/documents/${open.source.documentId}?page=${open.source.page ?? ""}&b=${open.source.blockStart}-${open.source.blockEnd}`}
+                href={`/documents/${open.group.documentId}?page=${open.group.page ?? ""}&b=${open.group.ranges.map((r) => `${r.start}-${r.end}`).join(",")}`}
                 className="text-xs text-brand-700 hover:underline"
               >
                 Full page
@@ -307,8 +351,12 @@ export function Chat({
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             <SourceViewer
-              key={`${open.source.documentId}-${open.source.blockStart}-${open.source.blockEnd}`}
-              location={open.source}
+              key={`${open.turn}-${open.group.key}`}
+              location={{
+                documentId: open.group.documentId,
+                page: open.group.page,
+                ranges: open.group.ranges,
+              }}
               compact
             />
           </div>
@@ -321,25 +369,25 @@ export function Chat({
 function TurnView({
   turn,
   showCost,
-  openSource,
+  openGroup,
   active,
 }: {
   turn: LiveTurn;
   showCost: boolean;
-  openSource: (source: AnswerSource) => void;
-  active: number | null;
+  openGroup: (group: SourceGroup) => void;
+  active: string | null;
 }) {
-  const byNumber = new Map(turn.sources.map((s) => [s.n, s]));
+  const groups = groupSources(turn.sources);
   const marker = (n: number) => {
-    const source = byNumber.get(n);
+    const group = groups.find((g) => g.numbers.includes(n));
     return (
       <button
         type="button"
-        onClick={() => source && openSource(source)}
-        title={source ? sourceLabel(source) : undefined}
+        onClick={() => group && openGroup(group)}
+        title={group ? groupLabel(group) : undefined}
         className={cn(
           "mx-0.5 inline-flex h-4.5 min-w-4.5 -translate-y-1.5 items-center justify-center rounded px-1 align-baseline text-[0.68rem] font-semibold",
-          active === n
+          group && active === group.key
             ? "bg-brand-700 text-white"
             : "bg-brand-100 text-brand-800 hover:bg-brand-200",
         )}
@@ -379,20 +427,20 @@ function TurnView({
 
       {turn.sources.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {turn.sources.map((source) => (
+          {groups.map((group) => (
             <button
-              key={source.n}
+              key={group.key}
               type="button"
-              onClick={() => openSource(source)}
+              onClick={() => openGroup(group)}
               className={cn(
                 "inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1 text-left text-xs ring-1 ring-inset",
-                active === source.n
+                active === group.key
                   ? "bg-brand-50 text-brand-900 ring-brand-500"
                   : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50",
               )}
             >
-              <span className="font-semibold text-brand-700">{source.n}</span>
-              <span className="truncate">{sourceLabel(source)}</span>
+              <span className="font-semibold text-brand-700">{group.numbers.join(", ")}</span>
+              <span className="truncate">{groupLabel(group)}</span>
             </button>
           ))}
         </div>

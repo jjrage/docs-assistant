@@ -10,7 +10,7 @@ import { SourceViewer } from "@/ui/viewer/source-viewer";
 
 export const metadata: Metadata = { title: "Document" };
 
-/** A document on its own page; `?page=` opens a PDF page, `&b=12-14` highlights blocks 12 and 13. */
+/** A document on its own page; `?page=` opens a PDF page, `&b=12-14,20-21` highlights those blocks. */
 export default function DocumentPage(props: PageProps<"/documents/[id]">) {
   return (
     <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-6 sm:px-8">
@@ -30,9 +30,11 @@ async function DocumentView({ params, searchParams }: PageProps<"/documents/[id]
   if (!doc) notFound();
 
   const page = Number(query.page) || null;
-  const range = typeof query.b === "string" ? /^(\d+)-(\d+)$/.exec(query.b) : null;
-  const blockStart = range ? Number(range[1]) : -1;
-  const blockEnd = range ? Number(range[2]) : -1;
+  // b=12-14,20-21: cited block ranges to highlight.
+  const ranges = (typeof query.b === "string" ? query.b.split(",") : [])
+    .map((part) => /^(\d+)-(\d+)$/.exec(part))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => ({ start: Number(m[1]), end: Number(m[2]) }));
 
   return (
     <div className="space-y-4">
@@ -47,7 +49,7 @@ async function DocumentView({ params, searchParams }: PageProps<"/documents/[id]
           {doc.effectiveDate ? ` · effective ${formatDate(doc.effectiveDate)}` : ""}
         </p>
       </div>
-      <SourceViewer location={{ documentId: doc.id, page, blockStart, blockEnd }} />
+      <SourceViewer location={{ documentId: doc.id, page, ranges }} />
     </div>
   );
 }

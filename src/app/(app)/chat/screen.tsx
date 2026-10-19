@@ -40,16 +40,11 @@ export function ChatScreen({ conversationId }: { conversationId: string | null }
 }
 
 async function Conversation({ conversationId }: { conversationId: string | null }) {
-  const viewer = await requireViewer(conversationId ? `/chat/${conversationId}` : "/chat");
+  const viewer = await requireViewer(conversationId ? `/chat?c=${conversationId}` : "/chat");
   const turns = conversationId ? await conversationTurns(conversationId) : [];
   if (turns === null) notFound();
   return (
-    <Chat
-      key={conversationId ?? "new"}
-      conversationId={conversationId}
-      initialTurns={turns}
-      showCost={viewer.role === "admin"}
-    />
+    <Chat conversationId={conversationId} initialTurns={turns} showCost={viewer.role === "admin"} />
   );
 }
 
@@ -64,7 +59,7 @@ async function Conversations({ current }: { current: string | null }) {
       {conversations.map((c) => (
         <li key={c.id}>
           <Link
-            href={`/chat/${c.id}`}
+            href={`/chat?c=${c.id}`}
             className={cn(
               "block truncate rounded-lg px-3 py-2 text-sm",
               c.id === current
