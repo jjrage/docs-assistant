@@ -41,6 +41,14 @@ test("the manager view has the upload form and the admin pages", async ({ page }
     await page.getByRole("link", { name: link }).first().click();
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
+
+  // Switching roles redraws the menu as well as the page.
+  await page.getByRole("button", { name: "Resident" }).click();
+  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page.getByRole("link", { name: "Answer log" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Manager" }).click();
+  await expect(page).toHaveURL(/\/admin\/inbox$/);
+  await expect(page.getByRole("link", { name: "Answer log" })).toBeVisible();
 });
 
 test("an answer cites its source, which opens on the page with the passage highlighted", async ({
