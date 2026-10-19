@@ -90,28 +90,6 @@ export function voyageEmbedder(apiKey: string, retry: RetryPolicy = interactive)
   };
 }
 
-/**
- * Spaces calls at least `intervalMs` apart, one at a time: for batch jobs on an account with a requests-
- * per-minute limit (3 RPM without a payment method on Voyage), pacing beats collecting 429s.
- */
-export function paced(embed: Embedder, intervalMs: number): Embedder {
-  let queue: Promise<unknown> = Promise.resolve();
-  let last = 0;
-  return (texts, inputType) => {
-    const run = queue.then(async () => {
-      const wait = last + intervalMs - Date.now();
-      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-      try {
-        return await embed(texts, inputType);
-      } finally {
-        last = Date.now();
-      }
-    });
-    queue = run.catch(() => {});
-    return run;
-  };
-}
-
 /** pgvector's text form, which PostgREST passes through to a vector column or argument. */
 export function toPgVector(vector: number[]): string {
   return `[${vector.join(",")}]`;

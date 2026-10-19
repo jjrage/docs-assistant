@@ -41,7 +41,7 @@ import { costMicroUsd } from "@/server/ai/pricing";
 import { systemPrompt } from "@/server/ai/prompt";
 import type { AnswerSource } from "@/server/ai/sources";
 import { searchChunks } from "@/server/search/search";
-import { paced, patient, voyageEmbedder, type Embedder } from "@/server/search/voyage";
+import { patient, voyageEmbedder, type Embedder } from "@/server/search/voyage";
 
 import { judge, type Behavior } from "./judge";
 
@@ -82,36 +82,45 @@ const db = createClient<Database>(url, env.SUPABASE_SECRET_KEY, {
 });
 const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY ?? "unused", maxRetries: 4 });
 const runsDir = path.join("evals", "runs");
-const embed = cachedEmbedder(
-  paced(
-    voyageEmbedder(env.VOYAGE_API_KEY ?? "unused", patient),
-    Math.ceil(60_000 / voyageRpm) + 1000,
-  ),
-  path.join(runsDir, "query-embeddings.json"),
-);
+const voyage = voyageEmbedder(env.VOYAGE_API_KEY ?? "unused", patient);
+const voyageSpacingMs = Math.ceil(60_000 / voyageRpm) + 1000;
+const cacheFile = path.join(runsDir, "query-embeddings.json");
+let queryCache: Record<string, { vector: number[]; tokens: number }> | null = null;
+let voyageQueue: Promise<unknown> = Promise.resolve();
+let lastVoyageCall = 0;
 
 /**
- * Query embeddings cached on disk: every variant asks the same 50 questions, so only the first run pays
- * Voyage for them (the rows still report the original token counts, so cost matches production).
+ * The embedder one case uses. Voyage calls go one at a time, spaced for the account's per-minute limit,
+ * and the time a call waits in that queue is reported through `onWait`, so it can be kept out of the
+ * answer time (in production nothing waits). Query embeddings are cached on disk: every variant asks the
+ * same 50 questions, so only the first run pays Voyage for them; rows still report the original token
+ * counts, so cost matches production.
  */
-function cachedEmbedder(inner: Embedder, file: string): Embedder {
-  let cache: Record<string, { vector: number[]; tokens: number }> | null = null;
-  const load = async () => {
-    cache ??= existsSync(file) ? JSON.parse(await readFile(file, "utf8")) : {};
-    return cache!;
-  };
+function caseEmbedder(onWait: (ms: number) => void): Embedder {
   return async (texts, inputType) => {
-    const store = await load();
-    const key = (text: string) => `${inputType}:${text}`;
-    if (texts.length === 1 && store[key(texts[0]!)]) {
-      const hit = store[key(texts[0]!)]!;
-      return { vectors: [hit.vector], tokens: hit.tokens };
-    }
-    const result = await inner(texts, inputType);
+    queryCache ??= existsSync(cacheFile) ? JSON.parse(await readFile(cacheFile, "utf8")) : {};
+    const store = queryCache!;
+    const key = `${inputType}:${texts[0]}`;
+    const hit = texts.length === 1 ? store[key] : undefined;
+    if (hit) return { vectors: [hit.vector], tokens: hit.tokens };
+
+    const queued = Date.now();
+    const run = voyageQueue.then(async () => {
+      const gap = lastVoyageCall + voyageSpacingMs - Date.now();
+      if (gap > 0) await new Promise((resolve) => setTimeout(resolve, gap));
+      onWait(Date.now() - queued);
+      try {
+        return await voyage(texts, inputType);
+      } finally {
+        lastVoyageCall = Date.now();
+      }
+    });
+    voyageQueue = run.catch(() => {});
+    const result = await run;
     if (texts.length === 1) {
-      store[key(texts[0]!)] = { vector: result.vectors[0]!, tokens: result.tokens };
-      await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, JSON.stringify(store));
+      store[key] = { vector: result.vectors[0]!, tokens: result.tokens };
+      await mkdir(runsDir, { recursive: true });
+      await writeFile(cacheFile, JSON.stringify(store));
     }
     return result;
   };
@@ -297,6 +306,7 @@ type Row = {
   cost_usd: number;
   latency_s: number;
   first_token_s: number | null;
+  queued_s: number;
   tool_calls: number;
   judge_model: string;
   judge_usage: Anthropic.Usage;
@@ -341,6 +351,10 @@ async function runCase(
   expected: Expected[],
 ): Promise<Row> {
   const handoffs: HandoffRequest[] = [];
+  // Time spent queued for the Voyage rate limit, and when (ms since the case started).
+  const started = Date.now();
+  const waits: { at: number; ms: number }[] = [];
+  const embed = caseEmbedder((ms) => waits.push({ at: Date.now() - started, ms }));
   const result = await answerQuestion(
     {
       client,
@@ -406,8 +420,15 @@ async function runCase(
     },
     embedding_tokens: result.usage.embedding,
     cost_usd: result.costMicroUsd / 1_000_000,
-    latency_s: result.totalMs / 1000,
-    first_token_s: result.firstTokenMs !== null ? result.firstTokenMs / 1000 : null,
+    // Without the rate-limit queue, as in production.
+    latency_s: (result.totalMs - waits.reduce((sum, w) => sum + w.ms, 0)) / 1000,
+    first_token_s:
+      result.firstTokenMs !== null
+        ? (result.firstTokenMs -
+            waits.filter((w) => w.at <= result.firstTokenMs!).reduce((sum, w) => sum + w.ms, 0)) /
+          1000
+        : null,
+    queued_s: waits.reduce((sum, w) => sum + w.ms, 0) / 1000,
     tool_calls: result.searches.length - 1 + (handedOff ? 1 : 0),
     judge_model: verdict.model,
     judge_usage: verdict.usage,
